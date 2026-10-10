@@ -25,9 +25,9 @@ type Member = { id: number; name: string; email: string; owner?: boolean };
 type Invite = { id: number; email: string };
 
 const SEED_MEMBERS: Member[] = [
-  { id: 1, name: "Alex Okafor", email: "alex@onscript.app", owner: true },
-  { id: 2, name: "Maya Achebe", email: "maya@onscript.app" },
-  { id: 3, name: "Tobi Lawal", email: "tobi@onscript.app" },
+  { id: 1, name: "Alex Okafor", email: "alex@lumi.app", owner: true },
+  { id: 2, name: "Maya Achebe", email: "maya@lumi.app" },
+  { id: 3, name: "Tobi Lawal", email: "tobi@lumi.app" },
 ];
 
 const initialsOf = (name: string) =>
@@ -52,12 +52,12 @@ export default function Settings({
   const [profileSaved, setProfileSaved] = useState(false);
   const [members, setMembers] = useState<Member[]>(SEED_MEMBERS);
   const [pending, setPending] = useState<Invite[]>([
-    { id: 1, email: "chidi@onscript.app" },
+    { id: 1, email: "chidi@lumi.app" },
   ]);
   const [invite, setInvite] = useState("");
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [wsName, setWsName] = useState("Onscript");
-  const [wsMono, setWsMono] = useState("O");
+  const [wsName, setWsName] = useState("Lumi");
+  const [wsMono, setWsMono] = useState("L");
   const [wsSaved, setWsSaved] = useState(false);
   const [billingNote, setBillingNote] = useState(false);
 
@@ -128,7 +128,7 @@ export default function Settings({
                       {name.trim() || "Unnamed"}
                     </span>
                     <span className={styles.profileMail}>
-                      alex@onscript.app
+                      alex@lumi.app
                     </span>
                   </span>
                 </div>
@@ -147,7 +147,7 @@ export default function Settings({
                   <span className={styles.fieldLabel}>Email</span>
                   <input
                     className={`${styles.input} ${styles.inputStatic}`}
-                    value="alex@onscript.app"
+                    value="alex@lumi.app"
                     readOnly
                     tabIndex={-1}
                   />
@@ -331,7 +331,7 @@ export default function Settings({
                   <span className={styles.fieldLabel}>Workspace URL</span>
                   <input
                     className={`${styles.input} ${styles.inputStatic}`}
-                    value="onscript.app/onscript"
+                    value="lumi.app/lumi"
                     readOnly
                     tabIndex={-1}
                   />
@@ -385,7 +385,7 @@ export default function Settings({
                   </button>
                   {billingNote && (
                     <span className={styles.savedNote}>
-                      We will email alex@onscript.app about billing.
+                      We will email alex@lumi.app about billing.
                     </span>
                   )}
                 </div>

@@ -124,7 +124,7 @@ html.light body {
 }
 
 /* ── Reference design tokens (PromptBar reference port) ──
- * Aliases of the OnScript palette so reference components can use
+ * Aliases of the Lumi palette so reference components can use
  * their native var() names. --ink/--surface/--ink-2 follow the theme
  * automatically; --line-strong flips in light mode. */
 :root {

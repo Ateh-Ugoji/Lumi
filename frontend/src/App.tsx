@@ -78,9 +78,9 @@ let nextId = 1;
 let nextChatId = 1;
 let sessionPick: number | null = null;
 
-const CHATS_KEY = "onscript_agent_chats";
-const ACTIVE_KEY = "onscript_agent_active";
-const DRAFTS_KEY = "onscript_agent_drafts";
+const CHATS_KEY = "lumi_agent_chats";
+const ACTIVE_KEY = "lumi_agent_active";
+const DRAFTS_KEY = "lumi_agent_drafts";
 
 const loadDrafts = (): Record<string, string> => {
   try {
@@ -512,7 +512,7 @@ export default function App() {
                   <div className={styles.streamInner}>
                     {messages.length === 0 && !busy && (
                       <div className={styles.empty}>
-                        <span className={styles.emptyMark}>Onscript</span>
+                        <span className={styles.emptyMark}>Lumi</span>
                         <p
                           className={styles.emptyText}
                           aria-live="polite"

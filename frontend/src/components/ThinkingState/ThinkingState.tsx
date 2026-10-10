@@ -87,22 +87,22 @@ const VARIANTS: Record<
   Social: {
     active: "Reading your socials",
     done: "Read your socials",
-    query: "posts mentioning onscript this week",
+    query: "posts mentioning lumi this week",
     rows: [
       {
-        primary: "@onscript",
+        primary: "@lumi",
         secondary: "x.com",
         href: "https://x.com",
         logo: "x",
       },
       {
-        primary: "Onscript",
+        primary: "Lumi",
         secondary: "instagram.com",
         href: "https://instagram.com",
         logo: "instagram",
       },
       {
-        primary: "Onscript Social",
+        primary: "Lumi Social",
         secondary: "linkedin.com",
         href: "https://linkedin.com",
         logo: "linkedin",

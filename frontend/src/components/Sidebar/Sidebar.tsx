@@ -26,7 +26,7 @@ import {
 } from "./Icons";
 import styles from "./Sidebar.module.css";
 
-const WORKSPACE = { key: "onscript", name: "Onscript", monogram: "O" };
+const WORKSPACE = { key: "lumi", name: "Lumi", monogram: "L" };
 
 const NAV_ITEMS: {
   key: string;
