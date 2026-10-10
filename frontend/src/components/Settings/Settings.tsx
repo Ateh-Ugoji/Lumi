@@ -92,7 +92,10 @@ export default function Settings({
           >
             <IconArrowBoxLeft size={16} />
           </button>
-          <h1 className={styles.title}>Settings</h1>
+          <div className={styles.headMeta}>
+            <h1 className={styles.title}>Settings</h1>
+            <p className={styles.subtitle}>Lumi by Onscript</p>
+          </div>
         </div>
 
         <div className={styles.layout}>
