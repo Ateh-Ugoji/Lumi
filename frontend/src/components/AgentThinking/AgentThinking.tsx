@@ -199,7 +199,9 @@ export default function AgentThinking({
   const reduced = usePrefersReducedMotion();
   const [manual, setManual] = useState<boolean | null>(null);
   const final = settled || status === "done";
-  const expanded = manual ?? !final;
+  const isShort = script.steps.length <= 4;
+  const expanded = manual ?? (!final || isShort);
+
 
   const count = final
     ? script.steps.length

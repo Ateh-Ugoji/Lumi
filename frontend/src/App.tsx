@@ -395,7 +395,7 @@ export default function App() {
       steps: [
         {
           id: "step-init",
-          label: "Consulting Lumi...",
+          label: "Thinking...",
           kind: "analysis",
           durationMs: 1200,
         },
@@ -423,7 +423,11 @@ export default function App() {
             let kind: SimStepKind = "action";
             let platforms: string[] = ["x"];
 
-            if (toolName === "check_niche_trends") {
+            if (toolName === "connect_account") {
+              label = "Generating secure X authorization link...";
+              kind = "action";
+              platforms = ["x"];
+            } else if (toolName === "check_niche_trends") {
               label = `Searching high-impression peer posts (${args.query || "niche"})`;
               kind = "social";
               platforms = ["x"];
@@ -440,6 +444,7 @@ export default function App() {
               kind = "writing";
               platforms = [args.target_platform || "x"];
             }
+
 
             liveSteps.push({
               id: `tool-${liveSteps.length}`,
