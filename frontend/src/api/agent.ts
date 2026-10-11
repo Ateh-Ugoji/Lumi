@@ -33,9 +33,11 @@ export {
   getConnectAuthUrl,
   getTrendMatches,
   scanNicheTrends,
+  getProfileAnalytics,
   type StreamEvent,
   type ProfileSummary,
   type TrendMatch,
+  type ProfileAnalytics,
 } from "./client";
 
 

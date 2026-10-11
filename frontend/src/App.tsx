@@ -30,8 +30,10 @@ import {
   streamChatMessage,
   sendChatMessage,
   getProfiles,
+  getProfileAnalytics,
   type StreamEvent,
   type ProfileSummary,
+  type ProfileAnalytics,
 } from "./api/agent";
 import styles from "./App.module.css";
 
@@ -182,12 +184,19 @@ export default function App() {
     useState<SettingsSection>("profile");
   const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
   const [profilesLoaded, setProfilesLoaded] = useState(false);
+  const [analytics, setAnalytics] = useState<ProfileAnalytics | null>(null);
 
   useEffect(() => {
     getProfiles()
       .then((data) => {
         setProfiles(data);
         setProfilesLoaded(true);
+        // Fetch analytics for the first (active) profile
+        if (data.length > 0) {
+          getProfileAnalytics(data[0].id).then((a) => {
+            if (a) setAnalytics(a);
+          });
+        }
       })
       .catch(() => setProfilesLoaded(true));
   }, [view]);
@@ -511,7 +520,7 @@ export default function App() {
                     {
                       id: nextId++,
                       role: "agent",
-                      text: result.content || "Done!",
+                      text: result.content?.trim() || "I finished working on that — let me know if you'd like more detail.",
                       sim: {
                         scriptId: completedScript.id,
                         elapsedMs: elapsed,

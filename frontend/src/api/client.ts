@@ -182,4 +182,37 @@ export async function scanNicheTrends(
   return res.json();
 }
 
+export type ProfileAnalytics = {
+  profile_id: number;
+  handle: string;
+  name: string;
+  total_impressions: number;
+  total_likes: number;
+  total_comments: number;
+  total_shares: number;
+  reach_change_pct: number;
+  saves_change_pct: number;
+  reach_series: number[];
+  saves_series: number[];
+  allocation: {
+    name: string;
+    label: string;
+    pct: number;
+    amount: string;
+    color: string;
+    textColor: string;
+  }[];
+  top_posts: { caption: string; impressions: number; likes: number }[];
+  is_live_data: boolean;
+  summary: string;
+};
 
+export async function getProfileAnalytics(profileId: number): Promise<ProfileAnalytics | null> {
+  try {
+    const res = await fetch(`${API_BASE}/profiles/${profileId}/analytics`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}

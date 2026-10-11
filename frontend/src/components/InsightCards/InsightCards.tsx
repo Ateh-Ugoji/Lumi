@@ -144,28 +144,76 @@ export type CompareSeries = {
   tooltipColor: string;
 };
 
-const COMPARE_SERIES: CompareSeries[] = [
-  {
-    name: "Reach",
-    values: [-2.9, -3.4, -3.05, -3.86, -3.52, -4.1, -3.82, -4.41],
-    sub: "-2,377 impressions",
-    tone: "red",
-    dotColor: "var(--orange)",
-    color: "#f68f3c",
-    tooltipColor: "var(--orange)",
-  },
-  {
-    name: "Saves",
-    values: [0.22, 0.58, 0.42, 0.91, 0.76, 1.08, 0.96, 1.15],
-    sub: "+617 saves",
-    tone: "green",
-    dotColor: "#3d9aff",
-    color: "#3d9aff",
-    tooltipColor: "var(--blue)",
-  },
-];
+export type LiveAnalytics = {
+  total_impressions: number;
+  reach_change_pct: number;
+  saves_change_pct: number;
+  reach_series: number[];
+  saves_series: number[];
+  allocation: {
+    name: string;
+    label: string;
+    pct: number;
+    amount: string;
+    color: string;
+    textColor: string;
+  }[];
+  top_posts?: { caption: string; impressions: number; likes: number }[];
+  is_live_data?: boolean;
+};
 
-function CompareCard({ series = COMPARE_SERIES }: { series?: CompareSeries[] }) {
+function buildCompareSeries(analytics: LiveAnalytics | null): CompareSeries[] {
+  if (analytics) {
+    const reach = analytics.reach_series;
+    const saves = analytics.saves_series;
+    const reachLast = reach.at(-1) ?? analytics.reach_change_pct;
+    const savesLast = saves.at(-1) ?? analytics.saves_change_pct;
+    const impressionsTotal = analytics.total_impressions;
+    return [
+      {
+        name: "Reach",
+        values: reach,
+        sub: `${reachLast >= 0 ? "+" : ""}${impressionsTotal.toLocaleString()} impressions`,
+        tone: reachLast >= 0 ? "green" : "red",
+        dotColor: reachLast >= 0 ? "#3d9aff" : "var(--orange)",
+        color: reachLast >= 0 ? "#3d9aff" : "#f68f3c",
+        tooltipColor: reachLast >= 0 ? "var(--blue)" : "var(--orange)",
+      },
+      {
+        name: "Saves",
+        values: saves,
+        sub: `${savesLast >= 0 ? "+" : ""}${savesLast.toFixed(2)}%`,
+        tone: savesLast >= 0 ? "green" : "red",
+        dotColor: "#3d9aff",
+        color: "#3d9aff",
+        tooltipColor: "var(--blue)",
+      },
+    ];
+  }
+  // Baseline (no live data yet)
+  return [
+    {
+      name: "Reach",
+      values: [-2.9, -3.4, -3.05, -3.86, -3.52, -4.1, -3.82, -4.41],
+      sub: "-2,377 impressions",
+      tone: "red",
+      dotColor: "var(--orange)",
+      color: "#f68f3c",
+      tooltipColor: "var(--orange)",
+    },
+    {
+      name: "Saves",
+      values: [0.22, 0.58, 0.42, 0.91, 0.76, 1.08, 0.96, 1.15],
+      sub: "+617 saves",
+      tone: "green",
+      dotColor: "#3d9aff",
+      color: "#3d9aff",
+      tooltipColor: "var(--blue)",
+    },
+  ];
+}
+
+function CompareCard({ series = [] }: { series?: CompareSeries[] }) {
   const dark = useDarkMode();
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const points = useMemo(
@@ -552,46 +600,6 @@ export type InsightPage = {
   pill: string;
 };
 
-const PAGES: InsightPage[] = [
-  {
-    key: "compare",
-    prose: (
-      <>
-        The worst performer in your{" "}
-        <Entity name="Feed" tone="var(--orange)" /> is single images — down{" "}
-        <Mono tone="red">-4.41%</Mono> or <Mono tone="red">-2,377</Mono>{" "}
-        impressions.
-      </>
-    ),
-    Card: CompareCard,
-    pill: "Should I rebalance my content mix?",
-  },
-  {
-    key: "anomaly",
-    prose: (
-      <>
-        Unusually high reach on{" "}
-        <span className={styles.proseStrong}>Dec 13</span> —{" "}
-        <Mono tone="red">+$1,834.66</Mono> above your average.
-      </>
-    ),
-    Card: AnomalyCard,
-    pill: "Get tips on cutting spend",
-  },
-  {
-    key: "allocation",
-    prose: (
-      <>
-        You're heavily invested in{" "}
-        <Entity name="Video" tone="var(--orange)" /> — it's{" "}
-        <span className={styles.proseStrong}>72.5%</span> of your case.
-      </>
-    ),
-    Card: AllocationCard,
-    pill: "If we look at seasonals, what changes?",
-  },
-];
-
 export type InsightCardsLabels = {
   title: string;
 };
@@ -601,29 +609,116 @@ const DEFAULT_INSIGHT_LABELS: InsightCardsLabels = {
 };
 
 export default function InsightCards({
-  pages = PAGES,
+  pages,
   labels,
   onPill,
+  analytics,
 }: {
   pages?: InsightPage[];
   labels?: Partial<InsightCardsLabels>;
   onPill?: (text: string) => void;
+  analytics?: LiveAnalytics | null;
 } = {}) {
   const l = { ...DEFAULT_INSIGHT_LABELS, ...labels };
   const [page, setPage] = useState(0);
 
-  const move = (direction: -1 | 1) => {
-    setPage((current) => (current + direction + pages.length) % pages.length);
-  };
+  // Build the compare series from live analytics (or static baseline)
+  const compareSeries = buildCompareSeries(analytics ?? null);
 
-  const { prose, Card, pill } = pages[page];
+  // Build dynamic allocation segments from live analytics if available
+  const allocationSegments: AllocationSegment[] = analytics?.allocation
+    ? analytics.allocation.map((a) => ({
+        name: a.name,
+        label: a.label,
+        pct: a.pct,
+        amount: a.amount,
+        color: a.color,
+        textColor: a.textColor,
+      }))
+    : ALLOCATION_SEGMENTS;
+
+  // Build live prose for the compare page
+  const reachSeries = compareSeries[0];
+  const reachLast = reachSeries.values.at(-1) ?? 0;
+  const compareProse = analytics ? (
+    <>
+      Your top channel is{" "}
+      <Entity name={analytics.allocation[0]?.label ?? "Text"} tone={analytics.allocation[0]?.color ?? "var(--blue)"} />{" — "}
+      <Mono tone="green">{analytics.allocation[0]?.pct.toFixed(1)}%</Mono> of total reach.
+      Impressions:{" "}
+      <Mono tone={reachLast >= 0 ? "green" : "red"}>
+        {reachLast >= 0 ? "+" : ""}{analytics.total_impressions.toLocaleString()}
+      </Mono>{" "}this period.
+    </>
+  ) : (
+    <>
+      The worst performer in your{" "}
+      <Entity name="Feed" tone="var(--orange)" /> is single images — down{" "}
+      <Mono tone="red">-4.41%</Mono> or <Mono tone="red">-2,377</Mono>{" "}
+      impressions.
+    </>
+  );
+
+  // Compose pages
+  const resolvedPages: InsightPage[] = pages ?? [
+    {
+      key: "compare",
+      prose: compareProse,
+      Card: () => <CompareCard series={compareSeries} />,
+      pill: "Should I rebalance my content mix?",
+    },
+    {
+      key: "anomaly",
+      prose: (
+        <>
+          Unusually high reach on{" "}
+          <span className={styles.proseStrong}>Dec 13</span> —{" "}
+          <Mono tone="red">+$1,834.66</Mono> above your average.
+        </>
+      ),
+      Card: AnomalyCard,
+      pill: "Get tips on cutting spend",
+    },
+    {
+      key: "allocation",
+      prose: analytics ? (
+        <>
+          Your top format is{" "}
+          <Entity name={allocationSegments[0].label} tone={allocationSegments[0].color} /> — it's{" "}
+          <span className={styles.proseStrong}>{allocationSegments[0].pct.toFixed(1)}%</span> of your views.
+        </>
+      ) : (
+        <>
+          You&apos;re heavily invested in{" "}
+          <Entity name="Video" tone="var(--orange)" /> — it&apos;s{" "}
+          <span className={styles.proseStrong}>72.5%</span> of your case.
+        </>
+      ),
+      Card: () => <AllocationCard segments={allocationSegments} />,
+      pill: "If we look at seasonals, what changes?",
+    },
+  ];
+
+  const safePage = Math.min(page, resolvedPages.length - 1);
+  const { prose, Card, pill } = resolvedPages[safePage];
+
+  const move = (direction: -1 | 1) => {
+    setPage((current) => (current + direction + resolvedPages.length) % resolvedPages.length);
+  };
 
   return (
     <div className={styles.wrap}>
       <div className={styles.pager}>
         <span className={styles.pagerTitleGroup}>
-          <span className={styles.pagerTitle}>{l.title}</span>
-          <span className={styles.pagerCount}>{pages.length}</span>
+          <span className={styles.pagerTitle}>
+            {l.title}
+            {analytics?.is_live_data && (
+              <span style={{ fontSize: "10px", marginLeft: "6px", color: "#3d9aff", fontWeight: 600 }}>
+                LIVE
+              </span>
+            )}
+          </span>
+          <span className={styles.pagerCount}>{resolvedPages.length}</span>
         </span>
         <span className={styles.pagerBtns}>
           {(["M15 18l-6-6 6-6", "M9 6l6 6-6 6"] as const).map((d, i) => (
