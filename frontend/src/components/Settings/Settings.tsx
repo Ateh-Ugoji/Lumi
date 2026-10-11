@@ -6,6 +6,7 @@ import styles from "./Settings.module.css";
 export type SettingsSection =
   | "profile"
   | "appearance"
+  | "social"
   | "invitations"
   | "workspace"
   | "plan";
@@ -13,10 +14,12 @@ export type SettingsSection =
 const SECTIONS: { key: SettingsSection; label: string }[] = [
   { key: "profile", label: "Profile" },
   { key: "appearance", label: "Appearance" },
+  { key: "social", label: "Connected Accounts" },
   { key: "invitations", label: "Invitations" },
   { key: "workspace", label: "Workspace" },
   { key: "plan", label: "Plan" },
 ];
+
 
 const SEAT_TOTAL = 10;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -204,7 +207,33 @@ export default function Settings({
               </section>
             )}
 
+            {section === "social" && (
+              <section className={styles.card}>
+                <div className={styles.cardTitle}>Connected Accounts</div>
+                <p className={styles.cardHint}>
+                  Social accounts linked to Lumi via Post for Me.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderRadius: 8, background: "rgba(255,255,255,0.04)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontWeight: 600, fontSize: 14 }}>X (Twitter)</span>
+                      <span style={{ color: "#38bdf8", fontSize: 13 }}>@AtehOfficial</span>
+                    </div>
+                    <span style={{ color: "#4ade80", fontSize: 12, fontWeight: 500 }}>● Connected</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderRadius: 8, background: "rgba(255,255,255,0.04)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontWeight: 600, fontSize: 14 }}>Instagram</span>
+                      <span style={{ color: "#f472b6", fontSize: 13 }}>@just_ateh</span>
+                    </div>
+                    <span style={{ color: "#4ade80", fontSize: 12, fontWeight: 500 }}>● Connected</span>
+                  </div>
+                </div>
+              </section>
+            )}
+
             {section === "invitations" && (
+
               <section className={styles.card}>
                 <div className={styles.cardTitle}>Invitations</div>
                 <p className={styles.cardHint}>

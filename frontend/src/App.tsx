@@ -20,7 +20,9 @@ import {
   SUBLINE_ROTATE_MIN_MS,
   SUBLINE_STORE_KEY,
 } from "./constants/sublines";
+import { sendChatMessage } from "./api/agent";
 import styles from "./App.module.css";
+
 
 type Message = {
   id: number;
@@ -368,7 +370,21 @@ export default function App() {
     runCounterRef.current += 1;
     setRun({ script: pickScript(text), runId: runCounterRef.current });
     setBusy(true);
+
+    // Call live agent backend
+    (async () => {
+      try {
+        const profileId = 1; // Default active profile
+        const agentRes = await sendChatMessage(profileId, text);
+        pendingAgentReplyRef.current = agentRes.content;
+      } catch (err) {
+        console.warn("Backend chat failed, falling back to local simulation:", err);
+        pendingAgentReplyRef.current = null;
+      }
+    })();
   };
+
+  const pendingAgentReplyRef = useRef<string | null>(null);
 
   const handleSettled = (scriptId: string, elapsedMs: number) => {
     const index = settledReplyRef.current;
@@ -376,6 +392,9 @@ export default function App() {
     const isAnalytics = pendingAnalyticsRef.current;
     pendingAnalyticsRef.current = false;
     const target = pendingChatIdRef.current;
+    const liveReply = pendingAgentReplyRef.current;
+    pendingAgentReplyRef.current = null;
+
     setChats((prev) =>
       prev.map((c) =>
         c.id === target
@@ -386,11 +405,11 @@ export default function App() {
                 {
                   id: nextId++,
                   role: "agent",
-                  text: isAnalytics
-                    ? ANALYTICS_REPLY
-                    : CANNED_REPLIES[
-                        index % CANNED_REPLIES.length
-                      ],
+                  text:
+                    liveReply ||
+                    (isAnalytics
+                      ? ANALYTICS_REPLY
+                      : CANNED_REPLIES[index % CANNED_REPLIES.length]),
                   insights: isAnalytics,
                   sim: { scriptId, elapsedMs },
                 },
