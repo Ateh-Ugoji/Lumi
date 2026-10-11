@@ -2,11 +2,13 @@ import {
   Fragment,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import AmbientBackground from "./components/AmbientBackground/AmbientBackground";
 import PromptBar from "./components/PromptBar/PromptBar";
+import InsightCards from "./components/InsightCards/InsightCards";
 
 import Settings, { type SettingsSection } from "./components/Settings/Settings";
 import ChronicOnline from "./components/ChronicOnline/ChronicOnline";
@@ -124,6 +126,103 @@ const applyEdgeGates = (el: HTMLElement) => {
     if (zone.dataset.edgeBottom !== bottom) zone.dataset.edgeBottom = bottom;
   }
 };
+
+/** X bird icon (simple SVG) */
+function XIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.748l7.73-8.835L1.254 2.25H8.08l4.26 5.634 5.905-5.634zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
+}
+
+/** Detect if a markdown link is a "Connect X" / OAuth / platform auth link */
+function isConnectLink(text: string, _url: string): boolean {
+  const low = text.toLowerCase();
+  return low.includes("connect") || low.includes("link") || low.includes("authorize");
+}
+
+/**
+ * Renders a single agent message with inline markdown:
+ * - `[text](url)` → Connect X card (if connect link) or plain <a>
+ * - **bold** → <strong>
+ * - `code` → <code>
+ * - Paragraphs split by double newline
+ */
+function AgentMessage({
+  text,
+  analytics,
+  onPill,
+}: {
+  text: string;
+  analytics?: ProfileAnalytics | null;
+  onPill?: (t: string) => void;
+}) {
+  const nodes = useMemo(() => {
+    // Split text into paragraphs first
+    const paragraphs = text.split(/\n\n+/);
+    return paragraphs.map((para, pi) => {
+      // Tokenise inline: **bold**, `code`, [label](url)
+      const INLINE = /(\*\*(.+?)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^)]+)\))/g;
+      const parts: React.ReactNode[] = [];
+      let last = 0;
+      let m: RegExpExecArray | null;
+      while ((m = INLINE.exec(para)) !== null) {
+        if (m.index > last) parts.push(para.slice(last, m.index));
+        if (m[2] !== undefined) {
+          // **bold**
+          parts.push(<strong key={m.index} className={styles.msgBold}>{m[2]}</strong>);
+        } else if (m[3] !== undefined) {
+          // `code`
+          parts.push(<code key={m.index} className={styles.msgCode}>{m[3]}</code>);
+        } else if (m[4] !== undefined && m[5]) {
+          // [label](url)
+          const label = m[4];
+          const url = m[5];
+          if (isConnectLink(label, url)) {
+            parts.push(
+              <a key={m.index} href={url} target="_blank" rel="noopener noreferrer" className={styles.connectCard}>
+                <XIcon className={styles.connectCardIcon} />
+                {label}
+              </a>
+            );
+          } else {
+            parts.push(
+              <a key={m.index} href={url} target="_blank" rel="noopener noreferrer" className={styles.msgLink}>{label}</a>
+            );
+          }
+        }
+        last = m.index + m[0].length;
+      }
+      if (last < para.length) parts.push(para.slice(last));
+      // single-newline breaks inside a paragraph
+      const withBreaks: React.ReactNode[] = [];
+      parts.forEach((node, ni) => {
+        if (typeof node === "string") {
+          const lines = node.split("\n");
+          lines.forEach((ln, li) => {
+            if (li > 0) withBreaks.push(<br key={`${pi}-${ni}-br${li}`} />);
+            if (ln) withBreaks.push(ln);
+          });
+        } else {
+          withBreaks.push(node);
+        }
+      });
+      return <p key={pi} className={styles.msgText}>{withBreaks}</p>;
+    });
+  }, [text]);
+
+  return (
+    <>
+      {nodes}
+      {analytics && (
+        <div className={styles.insightSlot}>
+          <InsightCards analytics={analytics} onPill={onPill} />
+        </div>
+      )}
+    </>
+  );
+}
 
 export default function App() {
   const [chats, setChats] = useState<Chat[]>(loadChats);
@@ -739,7 +838,15 @@ export default function App() {
                           {m.role === "agent" && (
                             <span className={styles.agentLabel}>Agent</span>
                           )}
-                          <p className={styles.msgText}>{m.text}</p>
+                          {m.role === "agent" ? (
+                            <AgentMessage
+                              text={m.text}
+                              analytics={m.insights ? analytics : null}
+                              onPill={(t) => handleInput(t)}
+                            />
+                          ) : (
+                            <p className={styles.msgText}>{m.text}</p>
+                          )}
                         </div>
                       </Fragment>
 
