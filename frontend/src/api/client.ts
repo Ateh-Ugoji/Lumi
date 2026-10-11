@@ -1,0 +1,126 @@
+const API_BASE = "http://localhost:8000";
+
+export type SamplePost = {
+  author?: string;
+  text?: string;
+  likes?: number;
+  url?: string;
+};
+
+export type ToolExecution = {
+  name: string;
+  arguments: Record<string, any>;
+  sample_posts: SamplePost[];
+};
+
+export type AgentResponse = {
+  role: string;
+  content: string;
+  tool_calls_made: string[];
+  tool_executions: ToolExecution[];
+};
+
+export type ProfileSummary = {
+  id: number;
+  name: string;
+  platform: string;
+  handle: string;
+  has_voice_profile: boolean;
+  listening_active: boolean;
+};
+
+export async function sendChatMessage(profileId: number, message: string): Promise<AgentResponse> {
+  const res = await fetch(`${API_BASE}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile_id: profileId, message }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Agent error (${res.status}): ${await res.text()}`);
+  }
+
+  return res.json();
+}
+
+export type StreamEvent =
+  | { type: "tool_start"; tool: string; arguments: Record<string, any> }
+  | { type: "tool_done"; tool: string; sample_posts: SamplePost[] }
+  | { type: "done"; content: string; tool_executions: ToolExecution[] }
+  | { type: "error"; error: string };
+
+export async function streamChatMessage(
+  profileId: number,
+  message: string,
+  onEvent: (event: StreamEvent) => void,
+): Promise<{ content: string; tool_executions: ToolExecution[] }> {
+  const response = await fetch(`${API_BASE}/chat/stream`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    },
+    body: JSON.stringify({ profile_id: profileId, message }),
+  });
+
+  if (!response.ok || !response.body) {
+    throw new Error(`Streaming error (${response.status}): ${await response.text()}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalResult = { content: "", tool_executions: [] as ToolExecution[] };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const jsonStr = trimmed.slice(5).trim();
+      if (!jsonStr) continue;
+
+      try {
+        const parsed = JSON.parse(jsonStr) as StreamEvent;
+        onEvent(parsed);
+        if (parsed.type === "done") {
+          finalResult = {
+            content: parsed.content,
+            tool_executions: parsed.tool_executions || [],
+          };
+        }
+      } catch (e) {
+        console.warn("Failed to parse SSE payload", jsonStr, e);
+      }
+    }
+  }
+
+  return finalResult;
+}
+
+export async function getProfiles(): Promise<ProfileSummary[]> {
+  const res = await fetch(`${API_BASE}/profiles`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.profiles || [];
+}
+
+export async function getProfileAlerts(profileId: number): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/profiles/${profileId}/alerts/unread`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.alerts || [];
+}
+
+export async function getChatHistory(profileId: number): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/chat/history?profile_id=${profileId}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.messages || [];
+}
