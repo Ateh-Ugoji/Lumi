@@ -6,29 +6,34 @@ import {
   useState,
 } from "react";
 import AmbientBackground from "./components/AmbientBackground/AmbientBackground";
-import InsightCards from "./components/InsightCards/InsightCards";
 import PromptBar from "./components/PromptBar/PromptBar";
+
 import Settings, { type SettingsSection } from "./components/Settings/Settings";
+import ChronicOnline from "./components/ChronicOnline/ChronicOnline";
 import SidebarNav from "./components/Sidebar/Sidebar";
 import ThinkingState from "./components/ThinkingState/ThinkingState";
 import AgentThinking from "./components/AgentThinking/AgentThinking";
+
 import {
-  pickScript,
   scriptById,
   type SimScript,
   type SimStep,
   type SimStepKind,
 } from "./simulation/simScripts";
-import { useSimulatedRun } from "./simulation/useSimulatedRun";
 import {
   SUBLINES,
   SUBLINE_ROTATE_JITTER_MS,
   SUBLINE_ROTATE_MIN_MS,
   SUBLINE_STORE_KEY,
 } from "./constants/sublines";
-import { sendChatMessage, streamChatMessage, type StreamEvent } from "./api/agent";
+import {
+  streamChatMessage,
+  sendChatMessage,
+  getProfiles,
+  type StreamEvent,
+  type ProfileSummary,
+} from "./api/agent";
 import styles from "./App.module.css";
-
 
 type Message = {
   id: number;
@@ -45,35 +50,13 @@ type Chat = {
   messages: Message[];
 };
 
-const CANNED_REPLIES = [
-  "Your voice profile is locked in (Base). I readapt captions to match it, keeping meaning intact.",
-  "The caption readaptation flow: paste the post, pick the platform, and I rework tone without touching facts.",
-  "Your best post this week scored 84. Hook + short lines + a question in the last sentence.",
-  "I don't browse or invent links. Every answer points at your own data or the doc you gave me.",
-];
-
-const ANALYTICS_REPLY =
-  "Impressions are up 12% week over week, but single images are lagging — carousels and video carried your reach. Here's the breakdown from your numbers:";
-
-const ANALYTICS_RE =
-  /analytic|analy[sz]e|impression|reach|engagement|metric|stat|perform|lagging|trend|chart|graph|insight|growth|follower|numbers?|views?|score|report/i;
-
 const PROMPT_POOL = [
-  "Show me how my account's impressions are doing and what's lagging behind",
-  "Which post performed best last week?",
-  "When's the best time for me to post?",
-  "What should I post next?",
-  "Compare this week's reach to last week",
-  "Rewrite my latest caption in my voice",
-  "Summarize my engagement trends this month",
-  "Draft a launch post for my new feature",
-  "Audit my content plan from google drive and weigh it against what is working now on Instagram",
-  "What should I stop posting, based on the last 30 days?",
-  "Turn last week's best reel into a carousel script",
-  "Compare my TikTok and Reels performance and tell me where to focus",
-  "Find the gaps in my posting schedule for next week",
-  "Pull my saves-per-impression trend and flag anything unusual",
-  "Build a one-week content plan from my top-performing posts",
+  "Check viral tweets and trending topics in my niche",
+  "Repurpose a caption in my voice for LinkedIn and X",
+  "Start listening for engagement spikes on my accounts",
+  "Analyze winning content frameworks in tech",
+  "Audit my creator voice profile from recent posts",
+  "What viral hook should I use for a product launch?",
 ];
 
 const pickPills = () => {
@@ -81,6 +64,7 @@ const pickPills = () => {
   const count = 2 + Math.floor(Math.random() * 2);
   return shuffled.slice(0, count);
 };
+
 
 let nextId = 1;
 let nextChatId = 1;
@@ -170,21 +154,50 @@ export default function App() {
     setInput(draftFor(activeId));
   }, [activeId]);
   const [busy, setBusy] = useState(false);
-  const [run, setRun] = useState<{
-    script: SimScript;
+  type ActiveRun = {
     runId: number;
-  } | null>(null);
+    script: SimScript;
+    startedAt: number;
+  };
+
+  const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
+
+  useEffect(() => {
+    if (!activeRun) {
+      setElapsedMs(0);
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setElapsedMs(Math.round(performance.now() - activeRun.startedAt));
+    }, 100);
+    return () => window.clearInterval(timer);
+  }, [activeRun]);
+
   const [pills, setPills] = useState<string[]>(pickPills);
   const [subline, setSubline] = useState<string | null>(null);
   const [sublineShown, setSublineShown] = useState(false);
-  const [view, setView] = useState<"chat" | "settings">("chat");
+  const [view, setView] = useState<"chat" | "chronic" | "settings">("chat");
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>("profile");
-  const sim = useSimulatedRun(run);
+  const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
+  const [profilesLoaded, setProfilesLoaded] = useState(false);
+
+  useEffect(() => {
+    getProfiles()
+      .then((data) => {
+        setProfiles(data);
+        setProfilesLoaded(true);
+      })
+      .catch(() => setProfilesLoaded(true));
+  }, [view]);
+
+  const hasConnectedAccounts = profiles.length > 0;
+
   const runCounterRef = useRef(0);
   const settledReplyRef = useRef(0);
-  const pendingAnalyticsRef = useRef(false);
   const pendingChatIdRef = useRef(0);
+
   const streamRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
   const handledUserRef = useRef<HTMLElement | null>(null);
@@ -354,8 +367,8 @@ export default function App() {
   const send = (raw: string) => {
     const text = raw.trim();
     if (!text) return;
-    pendingAnalyticsRef.current = ANALYTICS_RE.test(text);
     pendingChatIdRef.current = activeId;
+
     setChats((prev) =>
       prev.map((c) =>
         c.id === activeId
@@ -375,32 +388,34 @@ export default function App() {
     handleInput("");
     runCounterRef.current += 1;
     const runId = runCounterRef.current;
-    const fallbackScript = pickScript(text);
 
-    // Initial running state with first step
-    const liveScript: SimScript = {
+    const initialScript: SimScript = {
       id: `live-${runId}`,
-      finalDelayMs: 300,
+      finalDelayMs: 200,
       steps: [
         {
           id: "step-init",
-          label: "Understanding your request...",
+          label: "Consulting Lumi...",
           kind: "analysis",
           durationMs: 1200,
         },
       ],
     };
 
-    setRun({ script: liveScript, runId });
-    setBusy(true);
-
     const startTime = performance.now();
-    const liveSteps: SimStep[] = [...liveScript.steps];
+    const liveSteps: SimStep[] = [...initialScript.steps];
+
+    setActiveRun({
+      runId,
+      script: initialScript,
+      startedAt: startTime,
+    });
+    setBusy(true);
 
     (async () => {
       try {
-        const profileId = 1; // Default active profile
-        const result = await streamChatMessage(profileId, text, (evt: StreamEvent) => {
+        const activeProfileId = profiles.length > 0 ? profiles[0].id : 1;
+        const result = await streamChatMessage(activeProfileId, text, (evt: StreamEvent) => {
           if (evt.type === "tool_start") {
             const toolName = evt.tool;
             const args = evt.arguments || {};
@@ -434,13 +449,14 @@ export default function App() {
               platforms,
             });
 
-            setRun({
+            setActiveRun({
+              runId,
               script: {
                 id: `live-${runId}`,
-                finalDelayMs: 300,
+                finalDelayMs: 200,
                 steps: [...liveSteps],
               },
-              runId,
+              startedAt: startTime,
             });
           } else if (evt.type === "tool_done") {
             const lastStep = liveSteps[liveSteps.length - 1];
@@ -451,13 +467,14 @@ export default function App() {
                 lastStep.meta = `${evt.sample_posts.length} discovered posts`;
               }
             }
-            setRun({
+            setActiveRun({
+              runId,
               script: {
                 id: `live-${runId}`,
-                finalDelayMs: 300,
+                finalDelayMs: 200,
                 steps: [...liveSteps],
               },
-              runId,
+              startedAt: startTime,
             });
           }
         });
@@ -468,7 +485,7 @@ export default function App() {
           id: `step-finish`,
           label: "Synthesizing response",
           kind: "writing",
-          durationMs: 600,
+          durationMs: 400,
         });
 
         const completedScript: SimScript = {
@@ -478,8 +495,6 @@ export default function App() {
         };
 
         const target = pendingChatIdRef.current;
-        const isAnalytics = pendingAnalyticsRef.current;
-        pendingAnalyticsRef.current = false;
 
         setChats((prev) =>
           prev.map((c) =>
@@ -492,7 +507,6 @@ export default function App() {
                       id: nextId++,
                       role: "agent",
                       text: result.content || "Done!",
-                      insights: isAnalytics,
                       sim: {
                         scriptId: completedScript.id,
                         elapsedMs: elapsed,
@@ -504,64 +518,62 @@ export default function App() {
               : c,
           ),
         );
-        setRun(null);
+
+      } catch (err: any) {
+        console.warn("Live stream failed, falling back to direct chat:", err);
+        const target = pendingChatIdRef.current;
+        const activeProfileId = profiles.length > 0 ? profiles[0].id : 1;
+
+        try {
+          const direct = await sendChatMessage(activeProfileId, text);
+          const elapsed = Math.round(performance.now() - startTime);
+          setChats((prev) =>
+            prev.map((c) =>
+              c.id === target
+                ? {
+                    ...c,
+                    messages: [
+                      ...c.messages,
+                      {
+                        id: nextId++,
+                        role: "agent",
+                        text: direct.content || "Done!",
+                      },
+                    ],
+                  }
+                : c,
+            ),
+          );
+        } catch (fallbackErr: any) {
+          const errorMsg =
+            fallbackErr?.message ||
+            err?.message ||
+            "Unable to reach the Lumi agent backend. Please check that the server is running on http://localhost:8000.";
+
+          setChats((prev) =>
+            prev.map((c) =>
+              c.id === target
+                ? {
+                    ...c,
+                    messages: [
+                      ...c.messages,
+                      {
+                        id: nextId++,
+                        role: "agent",
+                        text: `⚠️ Connection error: ${errorMsg}`,
+                      },
+                    ],
+                  }
+                : c,
+            ),
+          );
+        }
+      } finally {
+        setActiveRun(null);
         setBusy(false);
-      } catch (err) {
-        console.warn("Live stream failed, falling back to local simulation:", err);
-        // Fall back to original simulation timer
-        setRun({ script: fallbackScript, runId });
       }
     })();
   };
-
-  const pendingAgentReplyRef = useRef<string | null>(null);
-
-  const handleSettled = (scriptId: string, elapsedMs: number) => {
-    const index = settledReplyRef.current;
-    settledReplyRef.current += 1;
-    const isAnalytics = pendingAnalyticsRef.current;
-    pendingAnalyticsRef.current = false;
-    const target = pendingChatIdRef.current;
-    const liveReply = pendingAgentReplyRef.current;
-    pendingAgentReplyRef.current = null;
-
-    setChats((prev) =>
-      prev.map((c) =>
-        c.id === target
-          ? {
-              ...c,
-              messages: [
-                ...c.messages,
-                {
-                  id: nextId++,
-                  role: "agent",
-                  text:
-                    liveReply ||
-                    (isAnalytics
-                      ? ANALYTICS_REPLY
-                      : CANNED_REPLIES[index % CANNED_REPLIES.length]),
-                  insights: isAnalytics,
-                  sim: { scriptId, elapsedMs },
-                },
-              ],
-            }
-          : c,
-      ),
-    );
-    setBusy(false);
-  };
-
-  useEffect(() => {
-    if (sim.status !== "done" || !run) return;
-    const { script } = run;
-    const elapsed = sim.elapsedMs;
-    const timer = window.setTimeout(() => {
-      setRun(null);
-      handleSettled(script.id, elapsed);
-    }, 250);
-    return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sim.status, run]);
 
   const resetChat = () => {
     const current = chats.find((c) => c.id === activeId);
@@ -576,26 +588,24 @@ export default function App() {
       setChats([...withMessages, fresh]);
       setActiveId(fresh.id);
     }
-    setRun(null);
+    setActiveRun(null);
     setBusy(false);
     setInput("");
-    pendingAnalyticsRef.current = false;
     setPills(pickPills());
   };
 
-  const live = run
+
+  const live = activeRun
     ? {
-        runId: run.runId,
-        script: run.script,
-        status:
-          sim.runId === run.runId && sim.status === "done"
-            ? ("done" as const)
-            : ("running" as const),
-        elapsedMs: sim.runId === run.runId ? sim.elapsedMs : 0,
-        index: sim.runId === run.runId ? sim.index : 0,
-        startedCount: sim.runId === run.runId ? sim.startedCount : 1,
+        runId: activeRun.runId,
+        script: activeRun.script,
+        status: "running" as const,
+        elapsedMs,
+        index: Math.max(activeRun.script.steps.length - 1, 0),
+        startedCount: activeRun.script.steps.length,
       }
     : null;
+
 
   const recents = chats
     .filter((c) => c.messages.length > 0)
@@ -616,13 +626,18 @@ export default function App() {
         <SidebarNav
           fill
           onNewChat={resetChat}
-          onPick={(id) => setActiveId(Number(id))}
+          onPick={(id) => {
+            setActiveId(Number(id));
+            setView("chat");
+          }}
           activeTitle={activeChat ? activeChat.title || null : null}
           recents={recents}
-          activeNav={view === "settings" ? "settings" : "home"}
-          onNavigate={(key) =>
-            setView(key === "settings" ? "settings" : "chat")
-          }
+          activeNav={view === "settings" ? "settings" : view === "chronic" ? "chronic" : "home"}
+          onNavigate={(key) => {
+            if (key === "settings") setView("settings");
+            else if (key === "chronic") setView("chronic");
+            else setView("chat");
+          }}
           onOpenSettings={(section) => {
             setSettingsSection(section as SettingsSection);
             setView("settings");
@@ -635,7 +650,19 @@ export default function App() {
               onSectionChange={setSettingsSection}
               onBack={() => setView("chat")}
             />
+          ) : view === "chronic" ? (
+            <ChronicOnline
+              profileId={profiles.length > 0 ? profiles[0].id : 1}
+              onRepurpose={(caption, author) => {
+                setView("chat");
+                send(
+                  `Repurpose this viral post from @${author} in my voice for X, LinkedIn, and Instagram:\n\n"${caption}"`,
+                );
+              }}
+              onBack={() => setView("chat")}
+            />
           ) : (
+
             <>
               <header className={styles.header}>
                 <h1 className={styles.title}>
@@ -699,13 +726,9 @@ export default function App() {
                             <span className={styles.agentLabel}>Agent</span>
                           )}
                           <p className={styles.msgText}>{m.text}</p>
-                          {m.insights && (
-                            <div className={styles.insightSlot}>
-                              <InsightCards onPill={(text) => handleInput(text)} />
-                            </div>
-                          )}
                         </div>
                       </Fragment>
+
                     ))}
                     {live && (
                       <AgentThinking

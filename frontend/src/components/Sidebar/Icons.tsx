@@ -27,6 +27,18 @@ export function IconHome({ size = 18, strokeWidth = 2 }: IconProps) {
   );
 }
 
+export function IconRadar({ size = 18, strokeWidth = 2 }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth)}>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" />
+      <path d="M12 12l4-4" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+
 export function IconUserAdd({ size = 18, strokeWidth = 2 }: IconProps) {
   return (
     <svg {...base(size, strokeWidth)}>

@@ -124,3 +124,62 @@ export async function getChatHistory(profileId: number): Promise<any[]> {
   const data = await res.json();
   return data.messages || [];
 }
+
+export async function getConnectAuthUrl(platform: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/pfm/connect`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.url || null;
+  } catch {
+    return null;
+  }
+}
+
+export type TrendMatch = {
+  id: number;
+  profile_id: number;
+  platform: string;
+  platform_post_id: string;
+  author_handle: string;
+  caption: string;
+  platform_url: string;
+  metrics: {
+    like_count?: number;
+    retweet_count?: number;
+    reply_count?: number;
+    impression_count?: number;
+  } | null;
+  discovered_at: string;
+};
+
+export async function getTrendMatches(profileId: number = 1, limit: number = 50): Promise<TrendMatch[]> {
+  try {
+    const res = await fetch(`${API_BASE}/trends/matches?profile_id=${profileId}&limit=${limit}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.matches || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function scanNicheTrends(
+  profileId: number = 1,
+  handles: string[] = ["sama", "levelsio", "karpathy", "paulg", "swyx"],
+  minLikes: number = 20,
+): Promise<{ new_matches_found: number; viral_posts: any[] }> {
+  const res = await fetch(`${API_BASE}/trends/scan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile_id: profileId, handles, min_likes: minLikes }),
+  });
+  if (!res.ok) throw new Error(`Scan error: ${await res.text()}`);
+  return res.json();
+}
+
+

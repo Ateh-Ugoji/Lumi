@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useLightMode } from "../../hooks/useLightMode";
 import { IconArrowBoxLeft, IconMoon, IconSun } from "../Sidebar/Icons";
+import { getProfiles, getConnectAuthUrl, type ProfileSummary } from "../../api/agent";
 import styles from "./Settings.module.css";
 
 export type SettingsSection =
@@ -27,12 +28,6 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 type Member = { id: number; name: string; email: string; owner?: boolean };
 type Invite = { id: number; email: string };
 
-const SEED_MEMBERS: Member[] = [
-  { id: 1, name: "Alex Okafor", email: "alex@lumi.app", owner: true },
-  { id: 2, name: "Maya Achebe", email: "maya@lumi.app" },
-  { id: 3, name: "Tobi Lawal", email: "tobi@lumi.app" },
-];
-
 const initialsOf = (name: string) =>
   name
     .split(/\s+/)
@@ -51,12 +46,21 @@ export default function Settings({
   onBack: () => void;
 }) {
   const { light, set: setLight } = useLightMode();
-  const [name, setName] = useState("Alex Okafor");
+  const [name, setName] = useState("Lumi User");
   const [profileSaved, setProfileSaved] = useState(false);
-  const [members, setMembers] = useState<Member[]>(SEED_MEMBERS);
-  const [pending, setPending] = useState<Invite[]>([
-    { id: 1, email: "chidi@lumi.app" },
-  ]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [pending, setPending] = useState<Invite[]>([]);
+  const [connectedProfiles, setConnectedProfiles] = useState<ProfileSummary[]>([]);
+  const [loadingProfiles, setLoadingProfiles] = useState(false);
+
+  useEffect(() => {
+    setLoadingProfiles(true);
+    getProfiles()
+      .then((data) => setConnectedProfiles(data))
+      .catch((err) => console.error("Error loading profiles:", err))
+      .finally(() => setLoadingProfiles(false));
+  }, []);
+
   const [invite, setInvite] = useState("");
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [wsName, setWsName] = useState("Lumi");
@@ -209,25 +213,80 @@ export default function Settings({
 
             {section === "social" && (
               <section className={styles.card}>
-                <div className={styles.cardTitle}>Connected Accounts</div>
-                <p className={styles.cardHint}>
-                  Social accounts linked to Lumi via Post for Me.
-                </p>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div>
+                    <div className={styles.cardTitle}>Connected Accounts</div>
+                    <p className={styles.cardHint}>
+                      Social accounts linked to Lumi via Post for Me.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.btn}
+                    onClick={async () => {
+                      const url = await getConnectAuthUrl("twitter");
+                      if (url) window.location.href = url;
+                    }}
+                  >
+                    + Connect Account
+                  </button>
+                </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderRadius: 8, background: "rgba(255,255,255,0.04)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ fontWeight: 600, fontSize: 14 }}>X (Twitter)</span>
-                      <span style={{ color: "#38bdf8", fontSize: 13 }}>@AtehOfficial</span>
+                  {loadingProfiles && (
+                    <div style={{ color: "var(--text-muted)", fontSize: 13, padding: 12 }}>
+                      Loading connected accounts...
                     </div>
-                    <span style={{ color: "#4ade80", fontSize: 12, fontWeight: 500 }}>● Connected</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderRadius: 8, background: "rgba(255,255,255,0.04)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ fontWeight: 600, fontSize: 14 }}>Instagram</span>
-                      <span style={{ color: "#f472b6", fontSize: 13 }}>@just_ateh</span>
+                  )}
+                  {!loadingProfiles && connectedProfiles.length === 0 && (
+                    <div style={{ textAlign: "center", padding: "24px 16px", background: "rgba(255,255,255,0.02)", borderRadius: 8 }}>
+                      <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 12 }}>
+                        No social accounts connected yet.
+                      </p>
+                      <button
+                        type="button"
+                        className={styles.btn}
+                        onClick={async () => {
+                          const url = await getConnectAuthUrl("twitter");
+                          if (url) window.location.href = url;
+                        }}
+                      >
+                        Connect Social Account
+                      </button>
                     </div>
-                    <span style={{ color: "#4ade80", fontSize: 12, fontWeight: 500 }}>● Connected</span>
-                  </div>
+                  )}
+                  {!loadingProfiles &&
+                    connectedProfiles.map((p) => (
+                      <div
+                        key={p.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "12px 16px",
+                          borderRadius: 8,
+                          background: "rgba(255,255,255,0.04)",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <span style={{ fontWeight: 600, fontSize: 14, textTransform: "capitalize" }}>
+                            {p.platform === "x" ? "X (Twitter)" : p.platform}
+                          </span>
+                          <span style={{ color: "#38bdf8", fontSize: 13 }}>
+                            @{p.handle}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          {p.has_voice_profile && (
+                            <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 4, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8" }}>
+                              Voice active
+                            </span>
+                          )}
+                          <span style={{ color: "#4ade80", fontSize: 12, fontWeight: 500 }}>
+                            ● Connected
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                 </div>
               </section>
             )}

@@ -19,6 +19,7 @@ import {
   IconMoon,
   IconPlusMedium,
   IconPopsicle,
+  IconRadar,
   IconSettingsGear,
   IconSidebarLeftArrow,
   IconSun,
@@ -35,8 +36,10 @@ const NAV_ITEMS: {
   count?: string;
 }[] = [
   { key: "home", label: "Home", icon: <IconHome size={18} /> },
+  { key: "chronic", label: "Chronic Online", icon: <IconRadar size={18} /> },
   { key: "settings", label: "Settings", icon: <IconSettingsGear size={18} /> },
 ];
+
 
 export type SidebarRecent = {
   id: string;
