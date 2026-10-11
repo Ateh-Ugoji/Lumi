@@ -1,5 +1,12 @@
 export type SimStepKind = "social" | "analysis" | "writing" | "action";
 
+export type SamplePost = {
+  author?: string;
+  text?: string;
+  likes?: number;
+  url?: string;
+};
+
 export type SimStep = {
   id: string;
   label: string;
@@ -8,6 +15,7 @@ export type SimStep = {
   detail?: string;
   meta?: string;
   platforms?: string[];
+  samplePosts?: SamplePost[];
 };
 
 export type SimScript = {

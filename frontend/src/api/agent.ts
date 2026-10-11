@@ -27,6 +27,8 @@ export async function sendChatMessage(profileId: number, message: string): Promi
   return res.json();
 }
 
+export { streamChatMessage, type StreamEvent } from "./client";
+
 export async function getProfileAlerts(profileId: number): Promise<any[]> {
   const res = await fetch(`${API_BASE}/profiles/${profileId}/alerts/unread`);
   if (!res.ok) return [];

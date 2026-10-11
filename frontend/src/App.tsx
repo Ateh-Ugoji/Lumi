@@ -12,7 +12,13 @@ import Settings, { type SettingsSection } from "./components/Settings/Settings";
 import SidebarNav from "./components/Sidebar/Sidebar";
 import ThinkingState from "./components/ThinkingState/ThinkingState";
 import AgentThinking from "./components/AgentThinking/AgentThinking";
-import { pickScript, scriptById, type SimScript } from "./simulation/simScripts";
+import {
+  pickScript,
+  scriptById,
+  type SimScript,
+  type SimStep,
+  type SimStepKind,
+} from "./simulation/simScripts";
 import { useSimulatedRun } from "./simulation/useSimulatedRun";
 import {
   SUBLINES,
@@ -20,7 +26,7 @@ import {
   SUBLINE_ROTATE_MIN_MS,
   SUBLINE_STORE_KEY,
 } from "./constants/sublines";
-import { sendChatMessage } from "./api/agent";
+import { sendChatMessage, streamChatMessage, type StreamEvent } from "./api/agent";
 import styles from "./App.module.css";
 
 
@@ -29,7 +35,7 @@ type Message = {
   role: "user" | "agent";
   text: string;
   insights?: boolean;
-  sim?: { scriptId: string; elapsedMs: number };
+  sim?: { scriptId: string; elapsedMs: number; customScript?: SimScript };
   thinking?: string;
 };
 
@@ -368,18 +374,142 @@ export default function App() {
     );
     handleInput("");
     runCounterRef.current += 1;
-    setRun({ script: pickScript(text), runId: runCounterRef.current });
+    const runId = runCounterRef.current;
+    const fallbackScript = pickScript(text);
+
+    // Initial running state with first step
+    const liveScript: SimScript = {
+      id: `live-${runId}`,
+      finalDelayMs: 300,
+      steps: [
+        {
+          id: "step-init",
+          label: "Understanding your request...",
+          kind: "analysis",
+          durationMs: 1200,
+        },
+      ],
+    };
+
+    setRun({ script: liveScript, runId });
     setBusy(true);
 
-    // Call live agent backend
+    const startTime = performance.now();
+    const liveSteps: SimStep[] = [...liveScript.steps];
+
     (async () => {
       try {
         const profileId = 1; // Default active profile
-        const agentRes = await sendChatMessage(profileId, text);
-        pendingAgentReplyRef.current = agentRes.content;
+        const result = await streamChatMessage(profileId, text, (evt: StreamEvent) => {
+          if (evt.type === "tool_start") {
+            const toolName = evt.tool;
+            const args = evt.arguments || {};
+            let label = `Executing ${toolName}...`;
+            let kind: SimStepKind = "action";
+            let platforms: string[] = ["x"];
+
+            if (toolName === "check_niche_trends") {
+              label = `Searching high-impression peer posts (${args.query || "niche"})`;
+              kind = "social";
+              platforms = ["x"];
+            } else if (toolName === "discover_and_extract_niche_frameworks") {
+              label = `Extracting winning content frameworks (${args.niche || "tech"})`;
+              kind = "analysis";
+              platforms = ["x", "linkedin"];
+            } else if (toolName === "extract_voice_profile") {
+              label = "Extracting your creator voice profile";
+              kind = "analysis";
+              platforms = ["x"];
+            } else if (toolName === "repurpose_caption") {
+              label = `Repurposing caption for ${args.target_platform || "socials"}`;
+              kind = "writing";
+              platforms = [args.target_platform || "x"];
+            }
+
+            liveSteps.push({
+              id: `tool-${liveSteps.length}`,
+              label,
+              kind,
+              durationMs: 1500,
+              platforms,
+            });
+
+            setRun({
+              script: {
+                id: `live-${runId}`,
+                finalDelayMs: 300,
+                steps: [...liveSteps],
+              },
+              runId,
+            });
+          } else if (evt.type === "tool_done") {
+            const lastStep = liveSteps[liveSteps.length - 1];
+            if (lastStep) {
+              lastStep.detail = "Completed";
+              if (evt.sample_posts && evt.sample_posts.length > 0) {
+                lastStep.samplePosts = evt.sample_posts.slice(0, 4);
+                lastStep.meta = `${evt.sample_posts.length} discovered posts`;
+              }
+            }
+            setRun({
+              script: {
+                id: `live-${runId}`,
+                finalDelayMs: 300,
+                steps: [...liveSteps],
+              },
+              runId,
+            });
+          }
+        });
+
+        // Finished streaming response
+        const elapsed = Math.round(performance.now() - startTime);
+        liveSteps.push({
+          id: `step-finish`,
+          label: "Synthesizing response",
+          kind: "writing",
+          durationMs: 600,
+        });
+
+        const completedScript: SimScript = {
+          id: `live-${runId}`,
+          finalDelayMs: 200,
+          steps: [...liveSteps],
+        };
+
+        const target = pendingChatIdRef.current;
+        const isAnalytics = pendingAnalyticsRef.current;
+        pendingAnalyticsRef.current = false;
+
+        setChats((prev) =>
+          prev.map((c) =>
+            c.id === target
+              ? {
+                  ...c,
+                  messages: [
+                    ...c.messages,
+                    {
+                      id: nextId++,
+                      role: "agent",
+                      text: result.content || "Done!",
+                      insights: isAnalytics,
+                      sim: {
+                        scriptId: completedScript.id,
+                        elapsedMs: elapsed,
+                        customScript: completedScript,
+                      },
+                    },
+                  ],
+                }
+              : c,
+          ),
+        );
+        setRun(null);
+        setBusy(false);
       } catch (err) {
-        console.warn("Backend chat failed, falling back to local simulation:", err);
-        pendingAgentReplyRef.current = null;
+        console.warn("Live stream failed, falling back to local simulation:", err);
+        // Fall back to original simulation timer
+        setRun({ script: fallbackScript, runId });
       }
     })();
   };
@@ -547,7 +677,7 @@ export default function App() {
                           <div className={styles.thinkingSlot}>
                             <AgentThinking
                               settled
-                              script={scriptById(m.sim.scriptId)}
+                              script={m.sim.customScript || scriptById(m.sim.scriptId)}
                               elapsedMs={m.sim.elapsedMs}
                             />
                           </div>

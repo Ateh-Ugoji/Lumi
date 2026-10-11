@@ -43,6 +43,67 @@ export async function sendChatMessage(profileId: number, message: string): Promi
   return res.json();
 }
 
+export type StreamEvent =
+  | { type: "tool_start"; tool: string; arguments: Record<string, any> }
+  | { type: "tool_done"; tool: string; sample_posts: SamplePost[] }
+  | { type: "done"; content: string; tool_executions: ToolExecution[] }
+  | { type: "error"; error: string };
+
+export async function streamChatMessage(
+  profileId: number,
+  message: string,
+  onEvent: (event: StreamEvent) => void,
+): Promise<{ content: string; tool_executions: ToolExecution[] }> {
+  const response = await fetch(`${API_BASE}/chat/stream`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    },
+    body: JSON.stringify({ profile_id: profileId, message }),
+  });
+
+  if (!response.ok || !response.body) {
+    throw new Error(`Streaming error (${response.status}): ${await response.text()}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalResult = { content: "", tool_executions: [] as ToolExecution[] };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const jsonStr = trimmed.slice(5).trim();
+      if (!jsonStr) continue;
+
+      try {
+        const parsed = JSON.parse(jsonStr) as StreamEvent;
+        onEvent(parsed);
+        if (parsed.type === "done") {
+          finalResult = {
+            content: parsed.content,
+            tool_executions: parsed.tool_executions || [],
+          };
+        }
+      } catch (e) {
+        console.warn("Failed to parse SSE payload", jsonStr, e);
+      }
+    }
+  }
+
+  return finalResult;
+}
+
 export async function getProfiles(): Promise<ProfileSummary[]> {
   const res = await fetch(`${API_BASE}/profiles`);
   if (!res.ok) return [];

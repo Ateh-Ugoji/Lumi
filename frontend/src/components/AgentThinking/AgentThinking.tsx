@@ -151,6 +151,29 @@ function StepRow({
           {step.meta && <span className={styles.meta}>{step.meta}</span>}
         </span>
         {step.detail && <span className={styles.detail}>{step.detail}</span>}
+        {step.samplePosts && step.samplePosts.length > 0 && (
+          <div className={styles.samplePostsGrid}>
+            {step.samplePosts.slice(0, 4).map((p, pIdx) => (
+              <a
+                key={pIdx}
+                href={p.url || "#"}
+                target="_blank"
+                rel="noreferrer"
+                className={styles.postCard}
+              >
+                <div className={styles.postAuthorRow}>
+                  <span>{p.author ? `@${p.author}` : "Leader post"}</span>
+                  {p.likes !== undefined && (
+                    <span className={styles.postLikes}>
+                      ❤️ {typeof p.likes === "number" ? p.likes.toLocaleString() : p.likes}
+                    </span>
+                  )}
+                </div>
+                <p className={styles.postText}>{p.text}</p>
+              </a>
+            ))}
+          </div>
+        )}
       </span>
     </div>
   );
